@@ -1,0 +1,150 @@
+name: Cypress E2E Tests
+
+on:
+  repository_dispatch:
+    types: [run-tests]
+  
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'Application URL to test'
+        required: true
+        default: 'https://app.venmail.io'
+        type: string
+      browser:
+        description: 'Browser to use'
+        required: true
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - edge
+      spec:
+        description: 'Test spec to run (leave empty for all tests)'
+        required: false
+        type: string
+
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  cypress-tests:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        containers: [1]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Cypress
+        run: npx cypress verify
+
+      - name: Cypress info
+        run: npx cypress info
+
+      - name: Determine test configuration
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "app_url=${{ github.event.client_payload.app_url }}" >> $GITHUB_OUTPUT
+            echo "browser=chrome" >> $GITHUB_OUTPUT
+            echo "spec=" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "app_url=${{ inputs.app_url }}" >> $GITHUB_OUTPUT
+            echo "browser=${{ inputs.browser }}" >> $GITHUB_OUTPUT
+            echo "spec=${{ inputs.spec }}" >> $GITHUB_OUTPUT
+          else
+            echo "app_url=https://app.venmail.io" >> $GITHUB_OUTPUT
+            echo "browser=chrome" >> $GITHUB_OUTPUT
+            echo "spec=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for application
+        run: |
+          echo "Waiting for ${{ steps.config.outputs.app_url }}"
+          npx wait-on ${{ steps.config.outputs.app_url }} --timeout 60000 --interval 2000 || true
+
+      - name: Run Cypress tests
+        uses: cypress-io/github-action@v6
+        with:
+          browser: ${{ steps.config.outputs.browser }}
+          spec: ${{ steps.config.outputs.spec }}
+          config: baseUrl=${{ steps.config.outputs.app_url }}
+        env:
+          CYPRESS_BASE_URL: ${{ steps.config.outputs.app_url }}
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots-${{ matrix.containers }}
+          path: cypress/screenshots
+          retention-days: 7
+
+      - name: Upload videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cypress-videos-${{ matrix.containers }}
+          path: cypress/videos
+          retention-days: 7
+
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "## Cypress Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "**App URL:** ${{ steps.config.outputs.app_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Browser:** ${{ steps.config.outputs.browser }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  notify-results:
+    needs: cypress-tests
+    runs-on: ubuntu-22.04
+    if: always() && github.event_name == 'repository_dispatch'
+    
+    steps:
+      - name: Report to main repo
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MAIN_REPO_PAT }}
+          script: |
+            const mainRepo = '${{ github.event.client_payload.repository }}';
+            const commitSha = '${{ github.event.client_payload.commit }}';
+            const testStatus = '${{ needs.cypress-tests.result }}';
+            
+            if (!mainRepo || !commitSha) {
+              console.log('Missing repository info, skipping status update');
+              return;
+            }
+            
+            const [owner, repo] = mainRepo.split('/');
+            
+            try {
+              await github.rest.repos.createCommitStatus({
+                owner: owner,
+                repo: repo,
+                sha: commitSha,
+                state: testStatus === 'success' ? 'success' : 'failure',
+                context: 'E2E Tests (Cypress)',
+                description: testStatus === 'success' ? 'All tests passed' : 'Some tests failed',
+                target_url: `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`
+              });
+              console.log('Successfully updated commit status');
+            } catch (error) {
+              console.error('Failed to update commit status:', error);
+            }

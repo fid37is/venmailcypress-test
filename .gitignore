@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Cypress
+cypress/videos
+cypress/screenshots
+cypress/downloads
+
+# Test results
+test-results/
+reports/
+mochawesome-report/
+
+# Environment
+.env
+.env.local
+cypress.env.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

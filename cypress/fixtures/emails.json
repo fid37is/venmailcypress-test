@@ -1,0 +1,26 @@
+{
+    "basic": {
+      "to": "recipient@example.com",
+      "subject": "Test Email - Basic",
+      "body": "This is a basic test email sent from Cypress automation."
+    },
+    "withCC": {
+      "to": "recipient@example.com",
+      "cc": "cc@example.com",
+      "subject": "Test Email - With CC",
+      "body": "This email includes a CC recipient."
+    },
+    "withBCC": {
+      "to": "recipient@example.com",
+      "bcc": "bcc@example.com",
+      "subject": "Test Email - With BCC",
+      "body": "This email includes a BCC recipient."
+    },
+    "withAll": {
+      "to": "recipient@example.com",
+      "cc": "cc@example.com",
+      "bcc": "bcc@example.com",
+      "subject": "Test Email - Complete",
+      "body": "This email includes To, CC, and BCC recipients."
+    }
+  }

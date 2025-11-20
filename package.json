@@ -1,0 +1,24 @@
+{
+  "name": "venmailcypress-test",
+  "version": "1.0.0",
+  "description": "E2E tests for Venmail application using POM",
+  "main": "index.js",
+  "scripts": {
+    "test": "cypress run",
+    "test:chrome": "cypress run --browser chrome",
+    "test:firefox": "cypress run --browser firefox",
+    "test:headed": "cypress run --headed",
+    "test:spec": "cypress run --spec",
+    "cy:open": "cypress open",
+    "cy:verify": "cypress verify",
+    "cy:info": "cypress info"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "cypress": "^15.6.0",
+    "wait-on": "^7.2.0"
+  }
+}
