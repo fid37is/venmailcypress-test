@@ -50,6 +50,32 @@ class LoginPage extends BasePage {
         this.clickLogin();
     }
 
+    // Login with session caching
+    loginWithSession(email, password) {
+        cy.session(
+            [email, password], // Unique identifier for this session
+            () => {
+                // This code only runs once per unique email/password combination
+                this.visit();
+                this.enterEmail(email);
+                this.enterPassword(password);
+                this.clickLogin();
+                this.verifyDashboard();
+            },
+            {
+                validate() {
+                    // Optional: Validate that the session is still valid
+                    // You can check for a cookie, localStorage item, or make an API call
+                    cy.getCookie('auth-token').should('exist');
+                },
+                cacheAcrossSpecs: true // Persist session across different spec files
+            }
+        );
+        
+        // After session is restored, visit the dashboard
+        cy.visit('/m/all');
+    }
+
     verifyErrorMessage(expectedMessage) {
         this.errorMessage().should('be.visible').and('contain', expectedMessage);
     }

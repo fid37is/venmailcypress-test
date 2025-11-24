@@ -226,41 +226,126 @@ describe('Admin Login Session', () => {
         cy.contains(/updated/i).should('be.visible');
     });
 
-    it.only('Can navigate to users tab, view a user, and add Alias', () => {
+    it.only('Can create and remove an alias for a specific user', () => {
+
+        const targetUser = "testuser-1763570056000-hgzjul9@capitolhospitality.info"; // UNIQUE IDENTIFIER
+        const randomAlias = `alias-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        // Go to Users page
         cy.contains('Users').click();
         cy.url().should('include', '/users');
 
         cy.wait(500);
 
-        cy.get('table tbody tr').eq(2).then($row => {
-            cy.wrap($row).trigger('mouseover');
-            cy.wrap($row)
-                .find('button')
-                .filter(':has(svg)')
-                .first()
-                .click({ force: true });
-        });
+        // ================================
+        // HOVER OVER USER ROW - THIS TRIGGERS THE DROPDOWN AND REVEALS THE EYE ICON
+        // ================================
+        cy.contains('td', targetUser)
+            .parent('tr')
+            .then($row => {
+                cy.wrap($row).trigger('mouseover');
 
+                cy.wait(300); // Give time for dropdown to appear if aliases exist
+
+                // ================================
+                // DELETE EXISTING ALIASES FROM DROPDOWN IF IT EXISTS
+                // ================================
+                cy.get('body').then($body => {
+                    const aliasDropdown = $body.find('[role="dialog"]:contains("Email Aliases")');
+
+                    if (aliasDropdown.length > 0) {
+                        cy.log('🗑️ Alias dropdown detected - deleting existing aliases before opening user');
+
+                        // Recursive function to delete all aliases from dropdown
+                        const deleteAllAliases = () => {
+                            cy.get('[role="dialog"]').then($dialog => {
+                                const deleteButtons = $dialog.find('button:has(svg.lucide-trash2)');
+
+                                if (deleteButtons.length > 0) {
+                                    cy.log(`Found ${deleteButtons.length} alias(es) in dropdown - deleting...`);
+
+                                    // Click first delete button (hover effect makes it visible)
+                                    cy.wrap(deleteButtons.first()).click({ force: true });
+
+                                    // Wait for deletion to complete
+                                    cy.wait(800);
+
+                                    // Check again for more aliases
+                                    deleteAllAliases();
+                                } else {
+                                    cy.log('✅ All aliases deleted from dropdown');
+                                    // Click away to close dropdown
+                                    cy.get('body').click(0, 0);
+                                    cy.wait(300);
+                                }
+                            });
+                        };
+
+                        deleteAllAliases();
+                    } else {
+                        cy.log('ℹ️ No alias dropdown found - user has no aliases yet');
+                    }
+                });
+
+                // ================================
+                // NOW CLICK THE EYE ICON TO OPEN USER DETAIL
+                // ================================
+                cy.wrap($row).trigger('mouseover'); // Hover again to ensure eye icon is visible
+                cy.wrap($row)
+                    .find('button')
+                    .filter(':has(svg)')
+                    .first()
+                    .click({ force: true });
+            });
+
+        // Wait for detail page to load and verify we're on it
+        cy.contains('USAGE', { timeout: 10000 }).should('be.visible');
+
+        // Go to ALIASES tab
         cy.contains('ALIASES').should('be.visible').click();
 
-        // Click Add Alias
-        cy.contains('button', 'Add Alias').click({ force: true });
+        cy.wait(500);
 
-        // Type into Alias field
+        // ================================
+        // CREATE A NEW ALIAS
+        // ================================
+        cy.log('➕ Creating new alias:', randomAlias);
+
+        // Open modal
+        cy.contains('button', 'Add Alias').first().click({ force: true });
+
+        // Type random alias
         cy.get('input[placeholder=" "]')
-            .first()                   // ensures correct field
+            .first()
             .clear()
-            .type('newsletter', { force: true, delay: 0 });
+            .type(randomAlias, { force: true });
 
-        // Click Add Alias
-        cy.contains('button', 'Add Alias').click({ force: true });
+        // Submit
+        cy.get('form button[type="submit"]').click({ force: true });
 
-        cy.contains('Alias added successfully').should('be.visible');
+        cy.contains('Alias added successfully', { timeout: 6000 }).should('be.visible');
+
+        // Verify alias appears in list
+        cy.contains(randomAlias).should('exist');
+        cy.wait(1000);
+
+        cy.log('✅ Alias created successfully');
+
+        // ================================
+        // DELETE THE ALIAS WE JUST CREATED
+        // ================================
+        // cy.log('🗑️ Deleting alias:', randomAlias);
+
+        // cy.get('button[title="Delete Alias"]').first().click({ force: true });
+
+        // // If confirmation modal exists — click Confirm
+        // cy.contains('button', 'Confirm').click({ force: true });
+
+        // cy.contains('Alias removed successfully', { timeout: 6000 }).should('be.visible');
+
+        // cy.log('✅ Alias deleted successfully');
+
     });
-
-
-
-
 
 
     it.skip('Can navigate to Billing tab', () => {

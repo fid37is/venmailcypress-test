@@ -42,6 +42,7 @@ export default defineConfig({
       environment: process.env.ENVIRONMENT || 'staging'
     },
     
+    experimentalSessionAndOrigin: true,
     setupNodeEvents(on, config) {
       // Add any plugins here
       

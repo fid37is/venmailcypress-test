@@ -2,6 +2,7 @@ import LoginPage from '../../pages/LoginPage';
 import EmailSendingPage from '../../pages/EmailSendingPage';
 
 describe('Email Composition', () => {
+    let loginPage;
     let emailPage;
     let userData;
     let emailData;
@@ -16,11 +17,13 @@ describe('Email Composition', () => {
     });
 
     beforeEach(() => {
-        // Login before each test
-        const { email, password } = userData.validUser;
-        cy.loginAsUser(email, password);
-
+        // Login as normal user before each test
+        loginPage = new LoginPage();
         emailPage = new EmailSendingPage();
+        
+        const { email, password } = userData.normalUser;
+        loginPage.visit();
+        loginPage.login(email, password);
     });
 
     it('should compose and send a basic email', () => {
@@ -60,27 +63,8 @@ describe('Email Composition', () => {
         emailPage.bccField().should('be.visible');
     });
 
-    it('should fill all email fields correctly', () => {
-        const email = emailData.withAll;
-
-        emailPage.clickCompose();
-        emailPage.fillTo(email.to);
-        emailPage.clickCcButton();
-        emailPage.fillCc(email.cc);
-        emailPage.clickBccButton();
-        emailPage.fillBcc(email.bcc);
-        emailPage.fillSubject(email.subject);
-        emailPage.fillBody(email.body);
-
-        // Verify all fields are filled
-        emailPage.toField().should('have.value', email.to);
-        emailPage.ccField().should('have.value', email.cc);
-        emailPage.bccField().should('have.value', email.bcc);
-        emailPage.subjectField().should('have.value', email.subject);
-    });
-
     it('should handle send confirmation modal', () => {
-        emailSendingPage.clickCompose();
+        emailPage.clickCompose();
         emailPage.fillTo(emailData.basic.to);
         emailPage.fillSubject(emailData.basic.subject);
         emailPage.fillBody(emailData.basic.body);

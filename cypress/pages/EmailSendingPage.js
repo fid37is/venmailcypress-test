@@ -42,9 +42,58 @@ class EmailSendingPage extends BasePage {
         return cy.contains('Email sent successfully');
     }
 
+    welcomeModalCloseButton() {
+        return cy.contains('button', 'Start composing');
+    }
+
+    validationModal() {
+        return cy.get('[role="dialog"]');
+    }
+
+    sendAnywayButton() {
+        return cy.get('button.bg-red-600').contains('Send anyway');
+    }
+
+    closeValidationModalButton() {
+        return cy.get('[role="dialog"] button svg').parent();
+    }
+
     // Methods
+    closeWelcomeModalIfVisible() {
+        cy.get('body').then(($body) => {
+            if ($body.find('button:contains("Start composing")').length > 0) {
+                cy.contains('button', 'Start composing').click({ force: true });
+                cy.wait(1000); // Wait for modal to close
+            }
+        });
+    }
+
+    closeValidationModalIfVisible() {
+        cy.get('body').then(($body) => {
+            // Check if validation modal is visible (Issue Found modal)
+            if ($body.find('[role="dialog"]:contains("Issue Found")').length > 0) {
+                // Click "Send anyway" button to proceed
+                cy.get('button.bg-red-600').contains('Send anyway').click({ force: true });
+                cy.wait(1000); // Wait for modal to close
+            } else if ($body.find('[role="dialog"]').length > 0) {
+                // If any other dialog is present, try to close it with the X button
+                cy.get('[role="dialog"]').first().within(() => {
+                    cy.get('button').contains('Send anyway').click({ force: true });
+                });
+                cy.wait(1000);
+            }
+        });
+    }
+
     clickCompose() {
+        // Click compose button first
         this.composeButton().click();
+        cy.wait(500); // Give modal time to appear if it's going to
+        
+        // Close welcome modal if it's blocking the composer
+        this.closeWelcomeModalIfVisible();
+        
+        // Now verify the composer is visible
         cy.contains('NEW MESSAGE').should('be.visible');
         cy.wait(2000);
     }
@@ -89,6 +138,9 @@ class EmailSendingPage extends BasePage {
     clickSend() {
         this.sendButton().click();
         cy.wait(2000);
+        
+        // Check and close validation modal if it appears after clicking send
+        this.closeValidationModalIfVisible();
     }
 
     handleSendConfirmation() {
