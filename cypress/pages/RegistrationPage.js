@@ -3,7 +3,7 @@ import BasePage from './BasePage';
 class RegistrationPage extends BasePage {
     // Selectors
     signUpButton() {
-        return cy.get('.text-center > .w-full');
+        return cy.contains('Sign up');
     }
 
     personalAccount() {
