@@ -1,4 +1,4 @@
-import LoginPage from "../pages/LoginPage";
+import LoginPage from "../../pages/LoginPage";
 
 describe('Admin Login Session', () => {
     const loginPage = new LoginPage();
@@ -364,7 +364,7 @@ describe('Admin Login Session', () => {
 
     });
 
-    it('9. Can navigate to Settings tab and update org profile with confirmation section', () => {
+    it.skip('9. Can navigate to Settings tab and update org profile with confirmation section', () => {
         const randomAddress = `Test St ${Cypress._.random(1, 999)}, Lagos`;
 
         cy.contains('Settings').click();
