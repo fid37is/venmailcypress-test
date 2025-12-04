@@ -364,71 +364,28 @@ describe('Admin Login Session', () => {
 
     });
 
-    it.skip('9. Can navigate to Settings tab and update org profile with confirmation section', () => {
-        const randomAddress = `Street ${Math.floor(Math.random() * 1000)}, City ${Math.floor(Math.random() * 100)}, State ${Math.floor(Math.random() * 50)}`;
+    it('9. Can navigate to Settings tab and update org profile with confirmation section', () => {
+        const randomAddress = `Test St ${Cypress._.random(1, 999)}, Lagos`;
 
-        // Navigate to Settings → Organization Profile
         cy.contains('Settings').click();
         cy.url().should('include', '/settings');
         cy.contains('Organization profile').click();
 
-        // Fill initial phone & address
         cy.get('input[type="tel"]').clear().type('08085952266');
         cy.get('#address').clear().type(randomAddress);
-
-        // Submit → same page re-renders with confirmation section
         cy.get('[type="submit"]').click();
 
-        // ✅ Wait for the confirmation form section to appear
-        // Use a selector unique to that section (example: phone input on confirmation)
-        cy.get('#phone_number', { timeout: 8000 }).should('be.visible');
+        // Wait for confirmation step - this is the key
+        cy.get('#phone_number', { timeout: 12000 }).should('be.visible').clear().type('08085952266');
 
-        // Fill phone number in confirmation section
-        cy.get('#phone_number').clear().type('08085952266');
-
-        // Submit confirmation
         cy.get('[type="submit"]').click();
 
-        // ✅ Wait for toast message
-        cy.get('.toast', { timeout: 8000 })
-            .filter(':visible')
-            .should('have.text', 'Organization profile updated successfully');
-    });
-
-    it.only('9. Can navigate to Settings tab and update org profile with confirmation section', () => {
-        const randomAddress = `Street ${Math.floor(Math.random() * 1000)}, City ${Math.floor(Math.random() * 100)}, State ${Math.floor(Math.random() * 50)}`;
-
-        // Navigate to Settings → Organization Profile
-        cy.contains('Settings').click();
-        cy.url().should('include', '/settings');
-        cy.contains('Organization profile').click();
-
-        // Fill initial phone & address
-        cy.get('input[type="tel"]').clear().type('08085952266');
-        cy.get('#address').clear().type(randomAddress);
-
-        // Submit → same page re-renders with confirmation section
-        cy.get('[type="submit"]').click();
-
-        // ✅ Wait for the confirmation form section to appear
-        // Use a selector unique to that section (example: phone input on confirmation)
-        cy.get('#phone_number', { timeout: 8000 }).should('be.visible');
-
-        // Fill phone number in confirmation section
-        cy.get('#phone_number').clear().type('08085952266');
-
-        // Submit confirmation
-        cy.get('[type="submit"]').click();
-
-        // ✅ Wait for toast message
-        cy.get('.toast', { timeout: 8000 })
-            .filter(':visible')
-            .should('have.text', 'Organization profile updated successfully');
+        cy.contains('.toast', 'Organization profile updated successfully', { timeout: 10000 })
+            .should('be.visible');
     });
 
 
-
-    it.skip('10. Can navigate to Domain tab', () => {
+    it('10. Can navigate to Domain tab', () => {
         cy.contains('Domain').click();
         cy.url().should('include', '/domain');
     });
