@@ -1,19 +1,16 @@
 // Import commands
 import './commands';
+// ✅ Correct cypress-grep support import
+import '@cypress/grep';
 
 // Global exception handling
 Cypress.on('uncaught:exception', (err, runnable) => {
-    // Prevent failing on uncaught exceptions
     console.log('Uncaught exception:', err.message);
     return false;
 });
 
 // Before each test
 beforeEach(() => {
-    // DON'T clear all cookies - preserve session cookies
-    // cy.clearCookies();
-    // cy.clearLocalStorage();
-    
     cy.viewport(1280, 720);
 });
 

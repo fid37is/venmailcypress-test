@@ -1,6 +1,6 @@
 import RegistrationPage from '../../pages/RegistrationPage';
 
-describe('User Registration', () => {
+describe('User Registration', { tags: '@ci' }, () => {
     let registrationPage;
     let testUser;
 

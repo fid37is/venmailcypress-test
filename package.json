@@ -21,6 +21,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@cypress/grep": "^5.0.0",
     "cypress": "^15.6.0",
     "wait-on": "^7.2.0"
   }

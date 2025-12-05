@@ -2,7 +2,7 @@
 
 import ForgotPasswordPage from "../../pages/ForgotPasswordPage";
 
-describe('Forgot Password - Positive and Negative Tests', () => {
+describe('Forgot Password - Positive and Negative Tests', { tags: '@ci' }, () => {
   const forgotPasswordPage = new ForgotPasswordPage();
 
   before(() => {

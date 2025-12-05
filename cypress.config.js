@@ -5,8 +5,8 @@ const path = require('path');
 module.exports = defineConfig({
   e2e: {
     setupNodeEvents(on, config) {
+      
       // Determine which environment to use
-      // Priority: CLI argument > env var > default to 'staging'
       const environment = config.env.ENVIRONMENT || 
                          process.env.CYPRESS_ENVIRONMENT || 
                          process.env.ENVIRONMENT || 
@@ -27,7 +27,7 @@ module.exports = defineConfig({
         config.env = {
           ...config.env,
           ...envConfig,
-          ENVIRONMENT: environment // Ensure ENVIRONMENT is set
+          ENVIRONMENT: environment
         };
         
         console.log(`✅ Loaded: cypress.env.${environment}.json`);
@@ -35,7 +35,6 @@ module.exports = defineConfig({
         console.warn(`⚠️  Warning: cypress.env.${environment}.json not found at ${envConfigPath}`);
         console.log(`📝 Available config files:`);
         
-        // List available config files
         const configDir = __dirname;
         const envFiles = fs.readdirSync(configDir)
           .filter(file => file.startsWith('cypress.env.') && file.endsWith('.json'));
@@ -44,7 +43,6 @@ module.exports = defineConfig({
       }
 
       // Set baseUrl based on environment
-      // Check if baseUrl is in the environment-specific config first
       if (envConfig && envConfig.BASE_URL) {
         config.baseUrl = envConfig.BASE_URL;
         console.log(`📌 Using BASE_URL from config file: ${config.baseUrl}`);
@@ -65,7 +63,7 @@ module.exports = defineConfig({
 
       return config;
     },
-    baseUrl: 'https://app.venmail.io', // Default fallback
+    baseUrl: 'https://app.venmail.io',
     viewportWidth: 1280,
     viewportHeight: 720,
     video: true,

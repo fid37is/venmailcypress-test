@@ -187,7 +187,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
-          npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+          npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator @cypress/grep
 
       - name: Verify Cypress
         run: npx cypress verify
@@ -209,6 +209,7 @@ jobs:
           record: false
           parallel: ${{ needs.setup.outputs.parallel_count > 1 }}
           group: ${{ needs.setup.outputs.test_suite }}-${{ needs.setup.outputs.environment }}
+          command: npx cypress run --browser ${{ needs.setup.outputs.browser }} --spec "${{ needs.setup.outputs.spec }}" --env grepTags=@ci
         env:
           CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
           CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
@@ -216,8 +217,7 @@ jobs:
           CYPRESS_TEST_SUITE: ${{ needs.setup.outputs.test_suite }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
-          # 🔄 Environment-specific credentials (Option 1 - Recommended)
-          # Use different secrets based on environment
+          # Environment-specific credentials
           CYPRESS_ADMIN_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_EMAIL || secrets.STAGING_ADMIN_EMAIL }}
           CYPRESS_ADMIN_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_PASSWORD || secrets.STAGING_ADMIN_PASSWORD }}
           CYPRESS_SALES_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_SALES_EMAIL || secrets.STAGING_SALES_EMAIL }}
@@ -226,7 +226,6 @@ jobs:
           CYPRESS_NORMAL_USER_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_PASSWORD || secrets.STAGING_NORMAL_USER_PASSWORD }}
           CYPRESS_NORMAL_USER_FIRSTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_FIRSTNAME || secrets.STAGING_NORMAL_USER_FIRSTNAME }}
           CYPRESS_NORMAL_USER_LASTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_LASTNAME || secrets.STAGING_NORMAL_USER_LASTNAME }}
-          
           
         continue-on-error: true
         id: cypress_run
@@ -238,11 +237,12 @@ jobs:
           browser: ${{ needs.setup.outputs.browser }}
           spec: ${{ needs.setup.outputs.spec }}
           install: false
+          command: npx cypress run --browser ${{ needs.setup.outputs.browser }} --spec "${{ needs.setup.outputs.spec }}" --env grepTags=@ci,RETRIES=2
         env:
           CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
           CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
           CYPRESS_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
-          CYPRESS_RETRIES: 2
+          
           # Same credential logic as above
           CYPRESS_ADMIN_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_EMAIL || secrets.STAGING_ADMIN_EMAIL }}
           CYPRESS_ADMIN_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_PASSWORD || secrets.STAGING_ADMIN_PASSWORD }}

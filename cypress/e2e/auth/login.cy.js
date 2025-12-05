@@ -1,7 +1,7 @@
 // cypress/e2e/login.cy.js - Secure multi-environment login tests
 import LoginPage from "../../pages/LoginPage";
 
-describe('Login Page - Positive and Negative Tests', () => {
+describe('Login Page - Positive and Negative Tests', { tags: '@ci' }, () => {
   const loginPage = new LoginPage();
 
   before(() => {
