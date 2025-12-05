@@ -71,6 +71,7 @@ module.exports = defineConfig({
     video: true,
     screenshotOnRunFailure: true,
     experimentalSessionAndOrigin: true,
+    testIsolation: false,
     defaultCommandTimeout: 10000,
     pageLoadTimeout: 30000,
   },

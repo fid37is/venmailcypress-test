@@ -1,29 +1,21 @@
-import LoginPage from '../../pages/LoginPage';
 import EmailSendingPage from '../../pages/EmailSendingPage';
 
 describe('Email Composition', () => {
-    let loginPage;
     let emailPage;
-    let userData;
     let emailData;
 
     before(() => {
-        cy.fixture('users').then((data) => {
-            userData = data;
-        });
+        cy.normalUserLogin();
+        cy.visit('/m/all');
+        
         cy.fixture('emails').then((data) => {
             emailData = data;
         });
     });
 
     beforeEach(() => {
-        // Login as normal user before each test
-        loginPage = new LoginPage();
         emailPage = new EmailSendingPage();
-        
-        const { email, password } = userData.normalUser;
-        loginPage.visit();
-        loginPage.login(email, password);
+        cy.visit('/m/all');
     });
 
     it('should compose and send a basic email', () => {

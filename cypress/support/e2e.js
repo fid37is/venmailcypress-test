@@ -10,8 +10,10 @@ Cypress.on('uncaught:exception', (err, runnable) => {
 
 // Before each test
 beforeEach(() => {
-    cy.clearCookies();
-    cy.clearLocalStorage();
+    // DON'T clear all cookies - preserve session cookies
+    // cy.clearCookies();
+    // cy.clearLocalStorage();
+    
     cy.viewport(1280, 720);
 });
 

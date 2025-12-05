@@ -73,7 +73,7 @@ Cypress.Commands.add('getUsers', () => {
  * Login with session caching - environment aware
  */
 Cypress.Commands.add('loginAsUser', (email, password) => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.session(
     [email, password, env],
@@ -98,7 +98,7 @@ Cypress.Commands.add('loginAsUser', (email, password) => {
  * Admin login with session - secure version
  */
 Cypress.Commands.add('adminLogin', () => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.session(['admin-session', env], () => {
     cy.getUser('existingAdminUser').then(user => {
@@ -117,7 +117,7 @@ Cypress.Commands.add('adminLogin', () => {
  * Normal user login with session - secure version
  */
 Cypress.Commands.add('normalUserLogin', () => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.session(['normal-user-session', env], () => {
     cy.getUser('normalUser').then(user => {
@@ -136,7 +136,7 @@ Cypress.Commands.add('normalUserLogin', () => {
  * Sales user login with session - secure version
  */
 Cypress.Commands.add('salesUserLogin', () => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.session(['sales-user-session', env], () => {
     cy.getUser('existingSalesUser').then(user => {
@@ -155,7 +155,7 @@ Cypress.Commands.add('salesUserLogin', () => {
  * Generic login by user type
  */
 Cypress.Commands.add('loginAs', (userType) => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.session([`${userType}-session`, env], () => {
     cy.getUser(userType).then(user => {
@@ -175,7 +175,7 @@ Cypress.Commands.add('loginAs', (userType) => {
  */
 Cypress.Commands.add('loginViaAPI', (userType) => {
   cy.getUser(userType).then(user => {
-    const apiUrl = Cypress.env('API_URL') || Cypress.env('CYPRESS_API_URL');
+    const apiUrl = Cypress.env('apiUrl');
     
     cy.request({
       method: 'POST',
@@ -196,7 +196,7 @@ Cypress.Commands.add('loginViaAPI', (userType) => {
         }
         cy.log(`✅ API Login successful for ${user.email}`);
       } else {
-        cy.log(`❌ API Login failed: ${response.status}`);
+        cy.log(`API Login failed: ${response.status}`);
         throw new Error(`Login failed with status ${response.status}`);
       }
     });
@@ -204,19 +204,34 @@ Cypress.Commands.add('loginViaAPI', (userType) => {
 });
 
 /**
+ * Generate a valid password for new user registrations
+ * Requirements: 8+ characters, 1 uppercase, 1 digit
+ * Returns: e.g., "TestPass82345A"
+ */
+Cypress.Commands.add('generateValidPassword', () => {
+  const timestamp = Date.now().toString().slice(-4);
+  const randomUpper = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
+  const randomDigit = Math.floor(Math.random() * 10);
+  
+  // Format: TestPass{digit}{timestamp}{uppercase}
+  return `TestPass${randomDigit}${timestamp}${randomUpper}`;
+});
+
+/**
  * Create a new test user dynamically (works in any environment)
+ * Generates valid password that meets registration requirements
  */
 Cypress.Commands.add('createTestUser', () => {
   const timestamp = Date.now();
   const uniqueId = Math.random().toString(36).substring(7);
-  const env = Cypress.env('ENVIRONMENT') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   return {
     email: `test-${uniqueId}-${timestamp}@venmail-test.io`,
-    password: `SecurePass${timestamp}!`,
+    password: cy.generateValidPassword(), // Use valid password generator
     firstName: 'Test',
     lastName: 'User',
-    username: `testuser${uniqueId}`,
+    username: `testuser${uniqueId}${timestamp}`,
     dateOfBirth: '1990-01-01',
     environment: env
   };
@@ -226,7 +241,7 @@ Cypress.Commands.add('createTestUser', () => {
  * Setup test data for the current environment
  */
 Cypress.Commands.add('setupTestData', () => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   cy.log(`🔧 Setting up test data for: ${env.toUpperCase()}`);
   
@@ -241,7 +256,7 @@ Cypress.Commands.add('setupTestData', () => {
  * Clean up test data after tests
  */
 Cypress.Commands.add('cleanupTestData', (email) => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   
   // Only cleanup in non-production environments
   if (env !== 'production') {
@@ -270,7 +285,7 @@ Cypress.Commands.add('validateEnvironment', () => {
 
   if (missing.length > 0) {
     throw new Error(
-      `❌ Missing required environment variables: ${missing.join(', ')}\n\n` +
+      `Missing required environment variables: ${missing.join(', ')}\n\n` +
       `Please set these in:\n` +
       `  - Local: cypress.env.json\n` +
       `  - CI/CD: GitHub Secrets\n\n` +
@@ -285,15 +300,15 @@ Cypress.Commands.add('validateEnvironment', () => {
  * Log current environment configuration (for debugging)
  */
 Cypress.Commands.add('logEnvironment', () => {
-  const env = Cypress.env('ENVIRONMENT') || Cypress.env('environment') || 'staging';
+  const env = Cypress.env('environment') || 'staging';
   const baseUrl = Cypress.config('baseUrl');
-  const apiUrl = Cypress.env('API_URL') || Cypress.env('CYPRESS_API_URL');
+  const apiUrl = Cypress.env('apiUrl');
   
   cy.log('📋 Current Environment Configuration:');
   cy.log(`  Environment: ${env}`);
   cy.log(`  Base URL: ${baseUrl}`);
   cy.log(`  API URL: ${apiUrl}`);
-  cy.log(`  Admin Email: ${Cypress.env('ADMIN_EMAIL') ? '✅ Set' : '❌ Missing'}`);
-  cy.log(`  Sales Email: ${Cypress.env('SALES_EMAIL') ? '✅ Set' : '❌ Missing'}`);
-  cy.log(`  Normal User Email: ${Cypress.env('NORMAL_USER_EMAIL') ? '✅ Set' : '❌ Missing'}`);
+  cy.log(`  Admin Email: ${Cypress.env('ADMIN_EMAIL') ? '✅ Set' : 'Missing'}`);
+  cy.log(`  Sales Email: ${Cypress.env('SALES_EMAIL') ? '✅ Set' : 'Missing'}`);
+  cy.log(`  Normal User Email: ${Cypress.env('NORMAL_USER_EMAIL') ? '✅ Set' : ' Missing'}`);
 });
