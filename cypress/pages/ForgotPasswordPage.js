@@ -3,7 +3,7 @@ import BasePage from './BasePage';
 class ForgotPasswordPage extends BasePage {
     // Define selectors
     forgotPasswordLink() {
-        return cy.contains('Forgotten your password?');
+        return cy.get('a[href*="forgot-password"], button').contains(/Forgotten your password?|Forgot password/i);
     }
 
     emailField() {
@@ -15,7 +15,8 @@ class ForgotPasswordPage extends BasePage {
     }
 
     successMessage() {
-        return cy.contains('Please wait before retrying.');
+        // Generic selector for success messages - don't hardcode text here
+        return cy.get('.text-green-500, .text-success, [class*="success"]').first();
     }
 
     errorMessage() {
@@ -23,7 +24,7 @@ class ForgotPasswordPage extends BasePage {
     }
 
     backToLoginLink() {
-        return cy.contains('Back');
+        return cy.get('a, button').contains(/Back|Return to login/i);
     }
 
     // Methods to interact with the page
@@ -52,7 +53,8 @@ class ForgotPasswordPage extends BasePage {
     }
 
     verifySuccessMessage(expectedMessage) {
-        this.successMessage().should('be.visible').and('contain', expectedMessage);
+        // Use contains to find the success message anywhere on the page
+        cy.contains(expectedMessage).should('be.visible');
     }
 
     verifyErrorMessage(expectedMessage) {

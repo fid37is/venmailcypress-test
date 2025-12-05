@@ -1,31 +1,30 @@
+# Cypress environment variables - CRITICAL: NEVER COMMIT!
+cypress.env.json
+cypress.env.*.json
+.env.local
+
+# Cypress test artifacts
+cypress/screenshots/
+cypress/videos/
+cypress/results/
+cypress/reports/
+cypress/downloads/
+
+# Old fixture files with passwords (if migrating)
+cypress/fixtures/users/*.json
+
 # Dependencies
 node_modules/
 
-# Cypress
-cypress/videos
-cypress/screenshots
-cypress/downloads
+# Logs
+npm-debug.log*
+cypress-debug.log
 
-# Test results
-test-results/
-reports/
-mochawesome-report/
-
-# Environment
-.env
-.env.local
-cypress.env.json
+# OS files
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*

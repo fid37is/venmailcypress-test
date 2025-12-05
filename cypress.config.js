@@ -1,67 +1,77 @@
-// cypress.config.js - Updated configuration
-import { defineConfig } from 'cypress';
+const { defineConfig } = require('cypress');
+const fs = require('fs');
+const path = require('path');
 
-export default defineConfig({
+module.exports = defineConfig({
   e2e: {
-    baseUrl: process.env.CYPRESS_BASE_URL || 'https://app.venmail.io',
-    
-    supportFile: 'cypress/support/e2e.js',
-    specPattern: 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}',
-    fixturesFolder: 'cypress/fixtures',
-    downloadsFolder: 'cypress/downloads',
-    
-    video: true,
-    screenshotOnRunFailure: true,
-    videosFolder: 'cypress/videos',
-    screenshotsFolder: 'cypress/screenshots',
-    
-    viewportWidth: 1280,
-    viewportHeight: 720,
-    
-    defaultCommandTimeout: 10000,
-    pageLoadTimeout: 60000,
-    requestTimeout: 10000,
-    responseTimeout: 30000,
-    
-    retries: {
-      runMode: 2,
-      openMode: 0
-    },
-    
-    testIsolation: true,
-    
-    env: {
-      apiUrl: process.env.API_URL || 'https://api.app.venmail.io',
-      environment: process.env.ENVIRONMENT || 'staging'
-    },
-    
-    experimentalSessionAndOrigin: true,
-    
     setupNodeEvents(on, config) {
-      // Environment-specific configuration
-      const environment = config.env.environment || 'staging';
+      // Determine which environment to use
+      // Priority: CLI argument > env var > default to 'staging'
+      const environment = config.env.ENVIRONMENT || 
+                         process.env.CYPRESS_ENVIRONMENT || 
+                         process.env.ENVIRONMENT || 
+                         'staging';
+
+      console.log(`🌍 Loading configuration for: ${environment.toUpperCase()}`);
+      console.log(`📍 Config env before load:`, config.env.ENVIRONMENT);
+      console.log(`📍 Process env:`, process.env.ENVIRONMENT);
+
+      // Load environment-specific config file
+      const envConfigPath = path.resolve(__dirname, `cypress.env.${environment}.json`);
       
-      if (environment === 'production') {
-        config.baseUrl = 'https://m.venmail.io';
-        config.env.apiUrl = 'https://api.m.venmail.io';
+      let envConfig = {};
+      if (fs.existsSync(envConfigPath)) {
+        envConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
         
-        // Only run read-only tests in production
-        config.specPattern = [
-          'cypress/e2e/read-only-prod.cy.js',
-          'cypress/e2e/login.cy.js' // Only tests that don't modify data
-        ];
-      } else if (environment === 'staging') {
-        config.baseUrl = 'https://app.venmail.io';
-        config.env.apiUrl = 'https://api.app.venmail.io';
+        // Merge environment-specific config into Cypress config
+        config.env = {
+          ...config.env,
+          ...envConfig,
+          ENVIRONMENT: environment // Ensure ENVIRONMENT is set
+        };
         
-        // Run all tests in staging
-        config.specPattern = 'cypress/e2e/**/*.cy.{js,jsx,ts,tsx}';
+        console.log(`✅ Loaded: cypress.env.${environment}.json`);
+      } else {
+        console.warn(`⚠️  Warning: cypress.env.${environment}.json not found at ${envConfigPath}`);
+        console.log(`📝 Available config files:`);
+        
+        // List available config files
+        const configDir = __dirname;
+        const envFiles = fs.readdirSync(configDir)
+          .filter(file => file.startsWith('cypress.env.') && file.endsWith('.json'));
+        
+        envFiles.forEach(file => console.log(`   - ${file}`));
+      }
+
+      // Set baseUrl based on environment
+      // Check if baseUrl is in the environment-specific config first
+      if (envConfig && envConfig.BASE_URL) {
+        config.baseUrl = envConfig.BASE_URL;
+        console.log(`📌 Using BASE_URL from config file: ${config.baseUrl}`);
+      } else {
+        const baseUrls = {
+          staging: 'https://app.venmail.io',
+          production: 'https://m.venmail.io',
+          dev: 'http://localhost:3000'
+        };
+        config.baseUrl = baseUrls[environment] || baseUrls.staging;
+        console.log(`📌 Using default BASE_URL for ${environment}: ${config.baseUrl}`);
       }
       
-      console.log(`Running tests against: ${config.baseUrl}`);
-      console.log(`Environment: ${environment}`);
-      
+      console.log(`🔗 Final Base URL: ${config.baseUrl}`);
+      console.log(`📊 Environment variables loaded:`, Object.keys(config.env).filter(key => 
+        ['ADMIN_EMAIL', 'SALES_EMAIL', 'NORMAL_USER_EMAIL', 'ENVIRONMENT', 'BASE_URL'].includes(key)
+      ));
+
       return config;
     },
+    baseUrl: 'https://app.venmail.io', // Default fallback
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    video: true,
+    screenshotOnRunFailure: true,
+    experimentalSessionAndOrigin: true,
+    defaultCommandTimeout: 10000,
+    pageLoadTimeout: 30000,
   },
 });

@@ -1,9 +1,10 @@
 name: Cypress E2E Tests
 
 on:
-  repository_dispatch:
-    types: [run-tests]
-  
+  push:
+    branches: [main, staging, develop]
+  pull_request:
+    branches: [main, staging]
   workflow_dispatch:
     inputs:
       environment:
@@ -11,48 +12,160 @@ on:
         required: true
         default: 'staging'
         type: choice
-        options:
-          - staging
-          - production
-      app_url:
-        description: 'Custom Application URL (overrides environment selection)'
-        required: false
-        type: string
+        options: [dev, staging, production]
+      test_suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'all'
+        type: choice
+        options: [all, smoke, regression, critical, sanity]
       browser:
         description: 'Browser to use'
         required: true
         default: 'chrome'
         type: choice
-        options:
-          - chrome
-          - firefox
-          - edge
+        options: [chrome, firefox, edge, electron]
       spec:
-        description: 'Test spec to run (leave empty for all tests)'
+        description: 'Specific test file (optional)'
         required: false
         type: string
-
-  push:
-    branches:
-      - main
-      - staging
-
+      parallel:
+        description: 'Enable parallel execution'
+        required: true
+        default: true
+        type: boolean
   schedule:
     - cron: '0 2 * * *'
+    - cron: '0 */6 * * *'
 
 env:
+  DEV_URL: 'https://dev.venmail.io'
   STAGING_URL: 'https://app.venmail.io'
   PRODUCTION_URL: 'https://m.venmail.io'
+  DEV_API_URL: 'https://api.dev.venmail.io'
+  STAGING_API_URL: 'https://api.app.venmail.io'
+  PRODUCTION_API_URL: 'https://api.venmail.io'
+  CYPRESS_CACHE_FOLDER: .cache/Cypress
+  NODE_ENV: test
 
 jobs:
-  cypress-tests:
+  setup:
+    name: Setup Test Configuration
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    outputs:
+      app_url: ${{ steps.config.outputs.app_url }}
+      api_url: ${{ steps.config.outputs.api_url }}
+      environment: ${{ steps.config.outputs.environment }}
+      browser: ${{ steps.config.outputs.browser }}
+      spec: ${{ steps.config.outputs.spec }}
+      test_suite: ${{ steps.config.outputs.test_suite }}
+      parallel_count: ${{ steps.config.outputs.parallel_count }}
+      
+    steps:
+      - name: Determine configuration
+        id: config
+        run: |
+          BROWSER="chrome"
+          TEST_SUITE="smoke"
+          PARALLEL_COUNT=1
+          
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ inputs.environment }}"
+            BROWSER="${{ inputs.browser }}"
+            TEST_SUITE="${{ inputs.test_suite }}"
+            SPEC="${{ inputs.spec }}"
+            [ "${{ inputs.parallel }}" == "true" ] && PARALLEL_COUNT=4
+          
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            ENV="staging"
+            TEST_SUITE="smoke"
+            PARALLEL_COUNT=2
+          
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+              ENV="production"
+              TEST_SUITE="sanity"
+            elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+              ENV="staging"
+              TEST_SUITE="regression"
+              PARALLEL_COUNT=4
+            else
+              ENV="dev"
+              TEST_SUITE="smoke"
+            fi
+          
+          elif [ "${{ github.event_name }}" == "schedule" ]; then
+            ENV="staging"
+            if [ "${{ github.event.schedule }}" == "0 2 * * *" ]; then
+              TEST_SUITE="regression"
+              PARALLEL_COUNT=4
+            else
+              TEST_SUITE="smoke"
+              PARALLEL_COUNT=2
+            fi
+          fi
+          
+          case "$ENV" in
+            dev)
+              APP_URL="${{ env.DEV_URL }}"
+              API_URL="${{ env.DEV_API_URL }}"
+              ;;
+            staging)
+              APP_URL="${{ env.STAGING_URL }}"
+              API_URL="${{ env.STAGING_API_URL }}"
+              ;;
+            production)
+              APP_URL="${{ env.PRODUCTION_URL }}"
+              API_URL="${{ env.PRODUCTION_API_URL }}"
+              ;;
+          esac
+          
+          case "$TEST_SUITE" in
+            smoke)
+              SUITE_SPEC="cypress/e2e/smoke/**/*.cy.js"
+              ;;
+            critical)
+              SUITE_SPEC="cypress/e2e/critical/**/*.cy.js"
+              ;;
+            regression)
+              SUITE_SPEC="cypress/e2e/**/*.cy.js"
+              ;;
+            sanity)
+              SUITE_SPEC="cypress/e2e/sanity/**/*.cy.js"
+              ;;
+            all)
+              SUITE_SPEC="cypress/e2e/**/*.cy.js"
+              ;;
+          esac
+          
+          [ -n "$SPEC" ] && SUITE_SPEC="$SPEC"
+          
+          echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "browser=$BROWSER" >> $GITHUB_OUTPUT
+          echo "spec=$SUITE_SPEC" >> $GITHUB_OUTPUT
+          echo "test_suite=$TEST_SUITE" >> $GITHUB_OUTPUT
+          echo "parallel_count=$PARALLEL_COUNT" >> $GITHUB_OUTPUT
+          
+          echo "### 🧪 Test Configuration Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** \`$ENV\` 🎯" >> $GITHUB_STEP_SUMMARY
+          echo "- **App URL:** $APP_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL:** $API_URL" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Suite:** \`$TEST_SUITE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Browser:** \`$BROWSER\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Parallel Containers:** $PARALLEL_COUNT" >> $GITHUB_STEP_SUMMARY
+
+  cypress-tests:
+    name: Test (${{ matrix.containers }})
+    needs: setup
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     
     strategy:
       fail-fast: false
       matrix:
-        containers: [1, 2, 3, 4]
+        containers: ${{ fromJson(format('[{0}]', needs.setup.outputs.parallel_count == '1' && '1' || needs.setup.outputs.parallel_count == '2' && '1,2' || '1,2,3,4')) }}
     
     steps:
       - name: Checkout code
@@ -61,8 +174,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
+
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CYPRESS_CACHE_FOLDER }}
+          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: cypress-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
@@ -72,172 +192,180 @@ jobs:
       - name: Verify Cypress
         run: npx cypress verify
 
-      - name: Cypress info
-        run: npx cypress info
-
-      - name: Determine test configuration
-        id: config
-        run: |
-          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
-            echo "app_url=${{ github.event.client_payload.app_url }}" >> $GITHUB_OUTPUT
-            echo "browser=chrome" >> $GITHUB_OUTPUT
-            echo "spec=" >> $GITHUB_OUTPUT
-            echo "environment=production" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # If custom URL is provided, use it; otherwise use environment selection
-            if [ -n "${{ inputs.app_url }}" ]; then
-              echo "app_url=${{ inputs.app_url }}" >> $GITHUB_OUTPUT
-              echo "environment=custom" >> $GITHUB_OUTPUT
-            else
-              case "${{ inputs.environment }}" in
-                staging)
-                  echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
-                  ;;
-                production)
-                  echo "app_url=${{ env.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
-                  ;;
-              esac
-              echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
-            fi
-            echo "browser=${{ inputs.browser }}" >> $GITHUB_OUTPUT
-            echo "spec=${{ inputs.spec }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "push" ]; then
-            # Auto-trigger based on branch
-            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-              echo "app_url=${{ env.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
-              echo "environment=production" >> $GITHUB_OUTPUT
-            elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
-              echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
-              echo "environment=staging" >> $GITHUB_OUTPUT
-            fi
-            echo "browser=chrome" >> $GITHUB_OUTPUT
-            echo "spec=" >> $GITHUB_OUTPUT
-          else
-            # Scheduled runs default to staging environment
-            echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
-            echo "browser=chrome" >> $GITHUB_OUTPUT
-            echo "spec=" >> $GITHUB_OUTPUT
-            echo "environment=staging" >> $GITHUB_OUTPUT
-          fi
-
       - name: Wait for application
         run: |
-          echo "Waiting for ${{ steps.config.outputs.app_url }}"
-          npx wait-on ${{ steps.config.outputs.app_url }} --timeout 60000 --interval 2000 || true
+          echo "🔍 Waiting for ${{ needs.setup.outputs.app_url }}"
+          npx wait-on ${{ needs.setup.outputs.app_url }} --timeout 120000 --interval 3000
+          echo "✅ Application is ready"
 
       - name: Run Cypress tests
         uses: cypress-io/github-action@v6
         with:
-          browser: ${{ steps.config.outputs.browser }}
-          spec: ${{ steps.config.outputs.spec }}
-          config: baseUrl=${{ steps.config.outputs.app_url }},video=true,screenshotOnRunFailure=true
+          browser: ${{ needs.setup.outputs.browser }}
+          spec: ${{ needs.setup.outputs.spec }}
+          config: video=true,screenshotOnRunFailure=true,videoCompression=32
           config-file: cypress.config.js
+          install: false
+          record: false
+          parallel: ${{ needs.setup.outputs.parallel_count > 1 }}
+          group: ${{ needs.setup.outputs.test_suite }}-${{ needs.setup.outputs.environment }}
         env:
-          CYPRESS_BASE_URL: ${{ steps.config.outputs.app_url }}
-          ENVIRONMENT: ${{ steps.config.outputs.environment }}
-          API_URL: ${{ steps.config.outputs.environment == 'production' && 'https://api.app.venmail.io' || 'https://api.staging.venmail.io' }}
+          CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
+          CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
+          CYPRESS_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          CYPRESS_TEST_SUITE: ${{ needs.setup.outputs.test_suite }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # 🔄 Environment-specific credentials (Option 1 - Recommended)
+          # Use different secrets based on environment
+          CYPRESS_ADMIN_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_EMAIL || secrets.STAGING_ADMIN_EMAIL }}
+          CYPRESS_ADMIN_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_PASSWORD || secrets.STAGING_ADMIN_PASSWORD }}
+          CYPRESS_SALES_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_SALES_EMAIL || secrets.STAGING_SALES_EMAIL }}
+          CYPRESS_SALES_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_SALES_PASSWORD || secrets.STAGING_SALES_PASSWORD }}
+          CYPRESS_NORMAL_USER_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_EMAIL || secrets.STAGING_NORMAL_USER_EMAIL }}
+          CYPRESS_NORMAL_USER_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_PASSWORD || secrets.STAGING_NORMAL_USER_PASSWORD }}
+          CYPRESS_NORMAL_USER_FIRSTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_FIRSTNAME || secrets.STAGING_NORMAL_USER_FIRSTNAME }}
+          CYPRESS_NORMAL_USER_LASTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_LASTNAME || secrets.STAGING_NORMAL_USER_LASTNAME }}
+          
+          
         continue-on-error: true
+        id: cypress_run
 
-      - name: Retry failed tests
-        if: failure()
+      - name: Retry failed tests (if any)
+        if: steps.cypress_run.outcome == 'failure'
         uses: cypress-io/github-action@v6
         with:
-          browser: ${{ steps.config.outputs.browser }}
-          spec: ${{ steps.config.outputs.spec }}
-          config: baseUrl=${{ steps.config.outputs.app_url }}
+          browser: ${{ needs.setup.outputs.browser }}
+          spec: ${{ needs.setup.outputs.spec }}
+          install: false
         env:
-          CYPRESS_BASE_URL: ${{ steps.config.outputs.app_url }}
+          CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
+          CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
+          CYPRESS_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          CYPRESS_RETRIES: 2
+          # Same credential logic as above
+          CYPRESS_ADMIN_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_EMAIL || secrets.STAGING_ADMIN_EMAIL }}
+          CYPRESS_ADMIN_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_PASSWORD || secrets.STAGING_ADMIN_PASSWORD }}
+          CYPRESS_SALES_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_SALES_EMAIL || secrets.STAGING_SALES_EMAIL }}
+          CYPRESS_SALES_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_SALES_PASSWORD || secrets.STAGING_SALES_PASSWORD }}
+          CYPRESS_NORMAL_USER_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_EMAIL || secrets.STAGING_NORMAL_USER_EMAIL }}
+          CYPRESS_NORMAL_USER_PASSWORD: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_PASSWORD || secrets.STAGING_NORMAL_USER_PASSWORD }}
+          CYPRESS_NORMAL_USER_FIRSTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_FIRSTNAME || secrets.STAGING_NORMAL_USER_FIRSTNAME }}
+          CYPRESS_NORMAL_USER_LASTNAME: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_NORMAL_USER_LASTNAME || secrets.STAGING_NORMAL_USER_LASTNAME }}
         continue-on-error: true
+        id: retry_run
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ needs.setup.outputs.environment }}-${{ matrix.containers }}-${{ github.run_number }}
+          path: |
+            cypress/results/**/*.json
+            cypress/screenshots/**/*
+            cypress/videos/**/*
+          retention-days: 30
+
+  report:
+    name: Generate Test Report
+    needs: [setup, cypress-tests]
+    runs-on: ubuntu-22.04
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Install report dependencies
+        run: npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
 
       - name: Merge test reports
-        if: always()
         run: |
+          mkdir -p cypress/results cypress/reports
+          find artifacts -name "*.json" -type f -exec cp {} cypress/results/ \;
           npx mochawesome-merge "cypress/results/*.json" > cypress/results/combined-report.json
 
       - name: Generate HTML report
-        if: always()
         run: |
           npx marge cypress/results/combined-report.json \
             --reportDir cypress/reports \
-            --reportTitle "Cypress Test Report - ${{ steps.config.outputs.environment }}" \
-            --reportPageTitle "E2E Test Results" \
-            --inline
+            --reportTitle "Cypress E2E Test Report - ${{ needs.setup.outputs.environment }}" \
+            --reportPageTitle "${{ needs.setup.outputs.test_suite }} Tests - ${{ needs.setup.outputs.environment }}" \
+            --inline \
+            --charts true \
+            --code true
 
-      - name: Upload HTML Report
+      - name: Upload consolidated report
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: cypress-report-${{ matrix.containers }}-${{ github.run_attempt }}
+          name: final-test-report-${{ needs.setup.outputs.environment }}-${{ github.run_number }}
           path: cypress/reports
-          retention-days: 30
+          retention-days: 90
 
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: cypress-screenshots-${{ matrix.containers }}-${{ github.run_attempt }}
-          path: cypress/screenshots
-          retention-days: 7
-
-      - name: Upload videos
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: cypress-videos-${{ matrix.containers }}-${{ github.run_attempt }}
-          path: cypress/videos
-          retention-days: 7
-
-      - name: Generate summary
-        if: always()
+      - name: Generate test summary
         run: |
-          echo "## Cypress Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "# 🧪 Cypress Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Environment** | ${{ steps.config.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **App URL** | ${{ steps.config.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Browser** | ${{ steps.config.outputs.browser }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Container** | ${{ matrix.containers }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Attempt** | ${{ github.run_attempt }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.setup.outputs.environment }}\` 🎯 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | \`${{ needs.setup.outputs.test_suite }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| App URL | ${{ needs.setup.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API URL | ${{ needs.setup.outputs.api_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Browser | ${{ needs.setup.outputs.browser }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[Download detailed HTML report from artifacts](#)" >> $GITHUB_STEP_SUMMARY
-          echo "[Videos and screenshots available in artifacts](#)" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.cypress-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 [Download detailed HTML report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
 
-  notify-results:
-    needs: cypress-tests
-    runs-on: ubuntu-22.04
-    if: always() && github.event_name == 'repository_dispatch'
-    
-    steps:
-      - name: Report to main repo
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.MAIN_REPO_PAT }}
           script: |
-            const mainRepo = '${{ github.event.client_payload.repository }}';
-            const commitSha = '${{ github.event.client_payload.commit }}';
             const testStatus = '${{ needs.cypress-tests.result }}';
+            const emoji = testStatus === 'success' ? '✅' : '❌';
+            const statusText = testStatus === 'success' ? 'All tests passed!' : 'Some tests failed';
             
-            if (!mainRepo || !commitSha) {
-              console.log('Missing repository info, skipping status update');
-              return;
-            }
-            
-            const [owner, repo] = mainRepo.split('/');
-            
-            try {
-              await github.rest.repos.createCommitStatus({
-                owner: owner,
-                repo: repo,
-                sha: commitSha,
-                state: testStatus === 'success' ? 'success' : 'failure',
-                context: 'E2E Tests (Cypress)',
-                description: testStatus === 'success' ? 'All tests passed' : 'Some tests failed',
-                target_url: `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`
-              });
-              console.log('Successfully updated commit status');
-            } catch (error) {
-              console.error('Failed to update commit status:', error);
-            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ${emoji} E2E Test Results
+              
+              **Status:** ${statusText}
+              **Environment:** \`${{ needs.setup.outputs.environment }}\` 🎯
+              **Test Suite:** \`${{ needs.setup.outputs.test_suite }}\`
+              **Browser:** \`${{ needs.setup.outputs.browser }}\`
+              **App URL:** ${{ needs.setup.outputs.app_url }}
+              **API URL:** ${{ needs.setup.outputs.api_url }}
+              
+              [View detailed results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+            });
+
+  notify:
+    name: Notify Team
+    needs: [setup, cypress-tests, report]
+    runs-on: ubuntu-22.04
+    if: failure() && (github.event_name == 'schedule' || github.ref == 'refs/heads/main')
+    
+    steps:
+      - name: Send notification
+        run: |
+          echo "🚨 Test Failed in ${{ needs.setup.outputs.environment }} environment"
+          echo "Send notification to Slack/Teams/Email"

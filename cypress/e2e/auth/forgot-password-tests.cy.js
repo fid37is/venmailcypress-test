@@ -4,15 +4,16 @@ import ForgotPasswordPage from "../../pages/ForgotPasswordPage";
 
 describe('Forgot Password - Positive and Negative Tests', () => {
   const forgotPasswordPage = new ForgotPasswordPage();
-  let users;
 
   before(() => {
-    cy.fixture('users').then((data) => {
-      users = data;
-    });
+    // Validate environment variables are set before running tests
+    cy.validateEnvironment();
+    cy.logEnvironment();
   });
 
   beforeEach(() => {
+    // Setup test data for current environment
+    cy.setupTestData();
     forgotPasswordPage.visitFromLogin();
   });
 
@@ -24,9 +25,12 @@ describe('Forgot Password - Positive and Negative Tests', () => {
 
   // POSITIVE TEST - Valid Email Reset Request
   it('should send password reset email for valid user', () => {
-    forgotPasswordPage.clickForgotPassword();
-    forgotPasswordPage.requestPasswordReset(users.normalUser.email);
-    forgotPasswordPage.verifySuccessMessage('Please wait before retrying.');
+    cy.getUser('normalUser').then((user) => {
+      forgotPasswordPage.clickForgotPassword();
+      forgotPasswordPage.requestPasswordReset(user.email);
+      // Success message shows masked email (e.g., "We sent a reset link to mi*******@gmail.com")
+      forgotPasswordPage.verifySuccessMessage('We sent a reset link to');
+    });
   });
 
   // NEGATIVE TEST - Invalid Email Format (triggers browser validation)
