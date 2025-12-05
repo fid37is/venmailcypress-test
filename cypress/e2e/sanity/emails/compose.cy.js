@@ -1,4 +1,4 @@
-import EmailSendingPage from '../../pages/EmailSendingPage';
+import EmailSendingPage from '../../../pages/EmailSendingPage';
 
 describe('Email Composition', { tags: '@ci' }, () => {
     let emailPage;

@@ -1,5 +1,5 @@
 // cypress/e2e/user-profile/change-password-validation.cy.js
-import ProfilePage from '../../pages/ProfilePage';
+import ProfilePage from '../../../pages/ProfilePage';
 
 describe('User Profile → Password Change – Full Validation', { tags: '@ci' }, () => {
   const profilePage = new ProfilePage();

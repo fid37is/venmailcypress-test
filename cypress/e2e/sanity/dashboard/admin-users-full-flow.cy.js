@@ -1,5 +1,5 @@
 // cypress/e2e/admin-dashboard/admin-session.cy.js
-import LoginPage from "../../pages/LoginPage";
+import LoginPage from "../../../pages/LoginPage";
 
 describe('Admin Login Session', () => {
     const loginPage = new LoginPage();
