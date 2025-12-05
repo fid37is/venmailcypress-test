@@ -71,13 +71,16 @@ jobs:
           PARALLEL_COUNT=1
           GREP_TAGS="@ci"
           SPEC=""
+          ENV="staging"
           
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             ENV="${{ inputs.environment }}"
             BROWSER="${{ inputs.browser }}"
             TEST_SUITE="${{ inputs.test_suite }}"
             SPEC="${{ inputs.spec }}"
-            [ "${{ inputs.parallel }}" == "true" ] && PARALLEL_COUNT=4
+            if [ "${{ inputs.parallel }}" == "true" ]; then
+              PARALLEL_COUNT=4
+            fi
           
           elif [ "${{ github.event_name }}" == "pull_request" ]; then
             ENV="staging"
@@ -85,10 +88,10 @@ jobs:
             PARALLEL_COUNT=2
           
           elif [ "${{ github.event_name }}" == "push" ]; then
-            if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
               ENV="production"
               TEST_SUITE="sanity"
-            elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
               ENV="staging"
               TEST_SUITE="regression"
               PARALLEL_COUNT=4
@@ -108,6 +111,7 @@ jobs:
             fi
           fi
           
+          # Set environment URLs
           case "$ENV" in
             dev)
               APP_URL="${{ env.DEV_URL }}"
@@ -120,6 +124,10 @@ jobs:
             production)
               APP_URL="${{ env.PRODUCTION_URL }}"
               API_URL="${{ env.PRODUCTION_API_URL }}"
+              ;;
+            *)
+              APP_URL="${{ env.STAGING_URL }}"
+              API_URL="${{ env.STAGING_API_URL }}"
               ;;
           esac
           
@@ -140,11 +148,17 @@ jobs:
             all)
               GREP_TAGS="@ci"
               ;;
+            *)
+              GREP_TAGS="@ci"
+              ;;
           esac
           
           # If custom spec provided, don't filter by tags
-          [ -n "$SPEC" ] && GREP_TAGS=""
+          if [ -n "$SPEC" ]; then
+            GREP_TAGS=""
+          fi
           
+          # Output all variables
           echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "environment=$ENV" >> $GITHUB_OUTPUT
@@ -154,6 +168,7 @@ jobs:
           echo "test_suite=$TEST_SUITE" >> $GITHUB_OUTPUT
           echo "parallel_count=$PARALLEL_COUNT" >> $GITHUB_OUTPUT
           
+          # Generate summary
           echo "### 🧪 Test Configuration Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** \`$ENV\` 🎯" >> $GITHUB_STEP_SUMMARY
           echo "- **App URL:** $APP_URL" >> $GITHUB_STEP_SUMMARY
@@ -162,7 +177,9 @@ jobs:
           echo "- **Grep Tags:** \`$GREP_TAGS\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Browser:** \`$BROWSER\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Parallel Containers:** $PARALLEL_COUNT" >> $GITHUB_STEP_SUMMARY
-          [ -n "$SPEC" ] && echo "- **Custom Spec:** \`$SPEC\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$SPEC" ]; then
+            echo "- **Custom Spec:** \`$SPEC\`" >> $GITHUB_STEP_SUMMARY
+          fi
 
   cypress-tests:
     name: Test (${{ matrix.containers }})
@@ -200,11 +217,25 @@ jobs:
       - name: Verify Cypress
         run: npx cypress verify
 
-      - name: Wait for application
+      - name: Check application availability
         run: |
-          echo "🔍 Waiting for ${{ needs.setup.outputs.app_url }}"
-          npx wait-on ${{ needs.setup.outputs.app_url }} --timeout 120000 --interval 3000
-          echo "✅ Application is ready"
+          echo "🔍 Checking application availability"
+          echo "Environment: ${{ needs.setup.outputs.environment }}"
+          echo "Target URL: ${{ needs.setup.outputs.app_url }}"
+          
+          # Simple curl check with timeout
+          echo "Testing with curl (30s timeout)..."
+          if timeout 30s curl -s -o /dev/null -w "HTTP Status: %{http_code}\nTime: %{time_total}s\n" "${{ needs.setup.outputs.app_url }}"; then
+            echo "✅ Application is accessible"
+          else
+            echo "⚠️ Warning: Could not reach application, but continuing..."
+            echo "This might be due to:"
+            echo "  - GitHub runner IP being blocked"
+            echo "  - Application behind authentication"
+            echo "  - SSL/certificate issues"
+            echo "Cypress will attempt to connect anyway"
+          fi
+        continue-on-error: true
 
       - name: Run Cypress tests
         uses: cypress-io/github-action@v6

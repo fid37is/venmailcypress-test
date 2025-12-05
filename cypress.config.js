@@ -5,7 +5,7 @@ const path = require('path');
 module.exports = defineConfig({
   e2e: {
     setupNodeEvents(on, config) {
-      // Register @cypress/grep plugin
+      // Register @cypress/grep plugin FIRST
       require('@cypress/grep/src/plugin')(config);
       
       // Determine which environment to use
@@ -63,6 +63,7 @@ module.exports = defineConfig({
         ['ADMIN_EMAIL', 'SALES_EMAIL', 'NORMAL_USER_EMAIL', 'ENVIRONMENT', 'BASE_URL'].includes(key)
       ));
 
+      // IMPORTANT: Return the modified config
       return config;
     },
     baseUrl: 'https://app.venmail.io',
