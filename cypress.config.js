@@ -5,6 +5,8 @@ const path = require('path');
 module.exports = defineConfig({
   e2e: {
     setupNodeEvents(on, config) {
+      // Register @cypress/grep plugin
+      require('@cypress/grep/src/plugin')(config);
       
       // Determine which environment to use
       const environment = config.env.ENVIRONMENT || 
@@ -72,5 +74,15 @@ module.exports = defineConfig({
     testIsolation: false,
     defaultCommandTimeout: 10000,
     pageLoadTimeout: 30000,
+    
+    // Reporter configuration - CRITICAL FOR CI/CD
+    reporter: 'mochawesome',
+    reporterOptions: {
+      reportDir: 'cypress/results',
+      overwrite: false,
+      html: false,
+      json: true,
+      timestamp: 'mmddyyyy_HHMMss'
+    }
   },
 });

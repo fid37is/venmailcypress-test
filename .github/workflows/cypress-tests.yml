@@ -58,6 +58,7 @@ jobs:
       environment: ${{ steps.config.outputs.environment }}
       browser: ${{ steps.config.outputs.browser }}
       spec: ${{ steps.config.outputs.spec }}
+      grep_tags: ${{ steps.config.outputs.grep_tags }}
       test_suite: ${{ steps.config.outputs.test_suite }}
       parallel_count: ${{ steps.config.outputs.parallel_count }}
       
@@ -68,6 +69,8 @@ jobs:
           BROWSER="chrome"
           TEST_SUITE="smoke"
           PARALLEL_COUNT=1
+          GREP_TAGS="@ci"
+          SPEC=""
           
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             ENV="${{ inputs.environment }}"
@@ -120,31 +123,34 @@ jobs:
               ;;
           esac
           
+          # Set grep tags based on test suite
           case "$TEST_SUITE" in
             smoke)
-              SUITE_SPEC="cypress/e2e/smoke/**/*.cy.js"
+              GREP_TAGS="@ci+@smoke"
               ;;
             critical)
-              SUITE_SPEC="cypress/e2e/critical/**/*.cy.js"
+              GREP_TAGS="@ci+@critical"
               ;;
             regression)
-              SUITE_SPEC="cypress/e2e/**/*.cy.js"
+              GREP_TAGS="@ci"
               ;;
             sanity)
-              SUITE_SPEC="cypress/e2e/sanity/**/*.cy.js"
+              GREP_TAGS="@ci+@sanity"
               ;;
             all)
-              SUITE_SPEC="cypress/e2e/**/*.cy.js"
+              GREP_TAGS="@ci"
               ;;
           esac
           
-          [ -n "$SPEC" ] && SUITE_SPEC="$SPEC"
+          # If custom spec provided, don't filter by tags
+          [ -n "$SPEC" ] && GREP_TAGS=""
           
           echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "environment=$ENV" >> $GITHUB_OUTPUT
           echo "browser=$BROWSER" >> $GITHUB_OUTPUT
-          echo "spec=$SUITE_SPEC" >> $GITHUB_OUTPUT
+          echo "spec=$SPEC" >> $GITHUB_OUTPUT
+          echo "grep_tags=$GREP_TAGS" >> $GITHUB_OUTPUT
           echo "test_suite=$TEST_SUITE" >> $GITHUB_OUTPUT
           echo "parallel_count=$PARALLEL_COUNT" >> $GITHUB_OUTPUT
           
@@ -153,8 +159,10 @@ jobs:
           echo "- **App URL:** $APP_URL" >> $GITHUB_STEP_SUMMARY
           echo "- **API URL:** $API_URL" >> $GITHUB_STEP_SUMMARY
           echo "- **Test Suite:** \`$TEST_SUITE\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Grep Tags:** \`$GREP_TAGS\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Browser:** \`$BROWSER\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Parallel Containers:** $PARALLEL_COUNT" >> $GITHUB_STEP_SUMMARY
+          [ -n "$SPEC" ] && echo "- **Custom Spec:** \`$SPEC\`" >> $GITHUB_STEP_SUMMARY
 
   cypress-tests:
     name: Test (${{ matrix.containers }})
@@ -202,19 +210,19 @@ jobs:
         uses: cypress-io/github-action@v6
         with:
           browser: ${{ needs.setup.outputs.browser }}
-          spec: ${{ needs.setup.outputs.spec }}
+          spec: ${{ needs.setup.outputs.spec || 'cypress/e2e/**/*.cy.js' }}
           config: video=true,screenshotOnRunFailure=true,videoCompression=32
           config-file: cypress.config.js
           install: false
           record: false
           parallel: ${{ needs.setup.outputs.parallel_count > 1 }}
           group: ${{ needs.setup.outputs.test_suite }}-${{ needs.setup.outputs.environment }}
-          command: npx cypress run --browser ${{ needs.setup.outputs.browser }} --spec "${{ needs.setup.outputs.spec }}" --env grepTags=@ci
         env:
           CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
           CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
           CYPRESS_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
           CYPRESS_TEST_SUITE: ${{ needs.setup.outputs.test_suite }}
+          CYPRESS_grepTags: ${{ needs.setup.outputs.grep_tags }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
           # Environment-specific credentials
@@ -235,13 +243,13 @@ jobs:
         uses: cypress-io/github-action@v6
         with:
           browser: ${{ needs.setup.outputs.browser }}
-          spec: ${{ needs.setup.outputs.spec }}
+          spec: ${{ needs.setup.outputs.spec || 'cypress/e2e/**/*.cy.js' }}
           install: false
-          command: npx cypress run --browser ${{ needs.setup.outputs.browser }} --spec "${{ needs.setup.outputs.spec }}" --env grepTags=@ci,RETRIES=2
         env:
           CYPRESS_BASE_URL: ${{ needs.setup.outputs.app_url }}
           CYPRESS_API_URL: ${{ needs.setup.outputs.api_url }}
           CYPRESS_ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          CYPRESS_grepTags: ${{ needs.setup.outputs.grep_tags }}
           
           # Same credential logic as above
           CYPRESS_ADMIN_EMAIL: ${{ needs.setup.outputs.environment == 'production' && secrets.PRODUCTION_ADMIN_EMAIL || secrets.STAGING_ADMIN_EMAIL }}
@@ -261,10 +269,11 @@ jobs:
         with:
           name: test-results-${{ needs.setup.outputs.environment }}-${{ matrix.containers }}-${{ github.run_number }}
           path: |
-            cypress/results/**/*.json
+            cypress/results/**/*
             cypress/screenshots/**/*
             cypress/videos/**/*
           retention-days: 30
+          if-no-files-found: warn
 
   report:
     name: Generate Test Report
@@ -285,6 +294,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: Install report dependencies
         run: npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
@@ -292,25 +302,42 @@ jobs:
       - name: Merge test reports
         run: |
           mkdir -p cypress/results cypress/reports
-          find artifacts -name "*.json" -type f -exec cp {} cypress/results/ \;
-          npx mochawesome-merge "cypress/results/*.json" > cypress/results/combined-report.json
+          
+          # Check if any JSON files exist
+          if find artifacts -name "*.json" -type f 2>/dev/null | grep -q .; then
+            find artifacts -name "*.json" -type f -exec cp {} cypress/results/ \;
+            npx mochawesome-merge "cypress/results/*.json" > cypress/results/combined-report.json
+            echo "✅ Reports merged successfully"
+          else
+            echo "⚠️ No test result JSON files found - creating placeholder report"
+            echo '{"stats":{"suites":0,"tests":0,"passes":0,"failures":0},"results":[]}' > cypress/results/combined-report.json
+          fi
+        continue-on-error: true
 
       - name: Generate HTML report
         run: |
-          npx marge cypress/results/combined-report.json \
-            --reportDir cypress/reports \
-            --reportTitle "Cypress E2E Test Report - ${{ needs.setup.outputs.environment }}" \
-            --reportPageTitle "${{ needs.setup.outputs.test_suite }} Tests - ${{ needs.setup.outputs.environment }}" \
-            --inline \
-            --charts true \
-            --code true
+          if [ -f cypress/results/combined-report.json ]; then
+            npx marge cypress/results/combined-report.json \
+              --reportDir cypress/reports \
+              --reportTitle "Cypress E2E Test Report - ${{ needs.setup.outputs.environment }}" \
+              --reportPageTitle "${{ needs.setup.outputs.test_suite }} Tests - ${{ needs.setup.outputs.environment }}" \
+              --inline \
+              --charts true \
+              --code true
+            echo "✅ HTML report generated"
+          else
+            echo "⚠️ No combined report found - skipping HTML generation"
+          fi
+        continue-on-error: true
 
       - name: Upload consolidated report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: final-test-report-${{ needs.setup.outputs.environment }}-${{ github.run_number }}
           path: cypress/reports
           retention-days: 90
+          if-no-files-found: warn
 
       - name: Generate test summary
         run: |
@@ -321,6 +348,7 @@ jobs:
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | \`${{ needs.setup.outputs.environment }}\` 🎯 |" >> $GITHUB_STEP_SUMMARY
           echo "| Test Suite | \`${{ needs.setup.outputs.test_suite }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Grep Tags | \`${{ needs.setup.outputs.grep_tags }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| App URL | ${{ needs.setup.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
           echo "| API URL | ${{ needs.setup.outputs.api_url }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Browser | ${{ needs.setup.outputs.browser }} |" >> $GITHUB_STEP_SUMMARY
@@ -351,6 +379,7 @@ jobs:
               **Status:** ${statusText}
               **Environment:** \`${{ needs.setup.outputs.environment }}\` 🎯
               **Test Suite:** \`${{ needs.setup.outputs.test_suite }}\`
+              **Grep Tags:** \`${{ needs.setup.outputs.grep_tags }}\`
               **Browser:** \`${{ needs.setup.outputs.browser }}\`
               **App URL:** ${{ needs.setup.outputs.app_url }}
               **API URL:** ${{ needs.setup.outputs.api_url }}
