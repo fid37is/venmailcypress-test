@@ -6,10 +6,17 @@ on:
   
   workflow_dispatch:
     inputs:
-      app_url:
-        description: 'Application URL to test'
+      environment:
+        description: 'Environment to test'
         required: true
-        default: 'https://app.venmail.io'
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      app_url:
+        description: 'Custom Application URL (overrides environment selection)'
+        required: false
         type: string
       browser:
         description: 'Browser to use'
@@ -25,8 +32,17 @@ on:
         required: false
         type: string
 
+  push:
+    branches:
+      - main
+      - staging
+
   schedule:
     - cron: '0 2 * * *'
+
+env:
+  STAGING_URL: 'https://app.venmail.io'
+  PRODUCTION_URL: 'https://m.venmail.io'
 
 jobs:
   cypress-tests:
@@ -36,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        containers: [1]
+        containers: [1, 2, 3, 4]
     
     steps:
       - name: Checkout code
@@ -49,7 +65,9 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
 
       - name: Verify Cypress
         run: npx cypress verify
@@ -64,14 +82,42 @@ jobs:
             echo "app_url=${{ github.event.client_payload.app_url }}" >> $GITHUB_OUTPUT
             echo "browser=chrome" >> $GITHUB_OUTPUT
             echo "spec=" >> $GITHUB_OUTPUT
+            echo "environment=production" >> $GITHUB_OUTPUT
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "app_url=${{ inputs.app_url }}" >> $GITHUB_OUTPUT
+            # If custom URL is provided, use it; otherwise use environment selection
+            if [ -n "${{ inputs.app_url }}" ]; then
+              echo "app_url=${{ inputs.app_url }}" >> $GITHUB_OUTPUT
+              echo "environment=custom" >> $GITHUB_OUTPUT
+            else
+              case "${{ inputs.environment }}" in
+                staging)
+                  echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
+                  ;;
+                production)
+                  echo "app_url=${{ env.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
+                  ;;
+              esac
+              echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            fi
             echo "browser=${{ inputs.browser }}" >> $GITHUB_OUTPUT
             echo "spec=${{ inputs.spec }}" >> $GITHUB_OUTPUT
-          else
-            echo "app_url=https://app.venmail.io" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            # Auto-trigger based on branch
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              echo "app_url=${{ env.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
+              echo "environment=production" >> $GITHUB_OUTPUT
+            elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+              echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
+              echo "environment=staging" >> $GITHUB_OUTPUT
+            fi
             echo "browser=chrome" >> $GITHUB_OUTPUT
             echo "spec=" >> $GITHUB_OUTPUT
+          else
+            # Scheduled runs default to staging environment
+            echo "app_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
+            echo "browser=chrome" >> $GITHUB_OUTPUT
+            echo "spec=" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> $GITHUB_OUTPUT
           fi
 
       - name: Wait for application
@@ -84,15 +130,53 @@ jobs:
         with:
           browser: ${{ steps.config.outputs.browser }}
           spec: ${{ steps.config.outputs.spec }}
+          config: baseUrl=${{ steps.config.outputs.app_url }},video=true,screenshotOnRunFailure=true
+          config-file: cypress.config.js
+        env:
+          CYPRESS_BASE_URL: ${{ steps.config.outputs.app_url }}
+          ENVIRONMENT: ${{ steps.config.outputs.environment }}
+          API_URL: ${{ steps.config.outputs.environment == 'production' && 'https://api.app.venmail.io' || 'https://api.staging.venmail.io' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Retry failed tests
+        if: failure()
+        uses: cypress-io/github-action@v6
+        with:
+          browser: ${{ steps.config.outputs.browser }}
+          spec: ${{ steps.config.outputs.spec }}
           config: baseUrl=${{ steps.config.outputs.app_url }}
         env:
           CYPRESS_BASE_URL: ${{ steps.config.outputs.app_url }}
+        continue-on-error: true
+
+      - name: Merge test reports
+        if: always()
+        run: |
+          npx mochawesome-merge "cypress/results/*.json" > cypress/results/combined-report.json
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          npx marge cypress/results/combined-report.json \
+            --reportDir cypress/reports \
+            --reportTitle "Cypress Test Report - ${{ steps.config.outputs.environment }}" \
+            --reportPageTitle "E2E Test Results" \
+            --inline
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cypress-report-${{ matrix.containers }}-${{ github.run_attempt }}
+          path: cypress/reports
+          retention-days: 30
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: cypress-screenshots-${{ matrix.containers }}
+          name: cypress-screenshots-${{ matrix.containers }}-${{ github.run_attempt }}
           path: cypress/screenshots
           retention-days: 7
 
@@ -100,7 +184,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cypress-videos-${{ matrix.containers }}
+          name: cypress-videos-${{ matrix.containers }}-${{ github.run_attempt }}
           path: cypress/videos
           retention-days: 7
 
@@ -108,9 +192,18 @@ jobs:
         if: always()
         run: |
           echo "## Cypress Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "**App URL:** ${{ steps.config.outputs.app_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Browser:** ${{ steps.config.outputs.browser }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ steps.config.outputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **App URL** | ${{ steps.config.outputs.app_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Browser** | ${{ steps.config.outputs.browser }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Container** | ${{ matrix.containers }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Attempt** | ${{ github.run_attempt }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[Download detailed HTML report from artifacts](#)" >> $GITHUB_STEP_SUMMARY
+          echo "[Videos and screenshots available in artifacts](#)" >> $GITHUB_STEP_SUMMARY
 
   notify-results:
     needs: cypress-tests

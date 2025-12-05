@@ -11,7 +11,10 @@
     "test:spec": "cypress run --spec",
     "cy:open": "cypress open",
     "cy:verify": "cypress verify",
-    "cy:info": "cypress info"
+    "cy:info": "cypress info",
+    "cy:staging": "ENVIRONMENT=staging CYPRESS_BASE_URL=https://app.venmail.io cypress run",
+    "cy:prod": "ENVIRONMENT=production CYPRESS_BASE_URL=https://m.venmail.io cypress run",
+    "cy:prod:readonly": "ENVIRONMENT=production CYPRESS_BASE_URL=https://m.venmail.io cypress run --spec 'cypress/e2e/read-only-prod.cy.js'"
   },
   "keywords": [],
   "author": "",

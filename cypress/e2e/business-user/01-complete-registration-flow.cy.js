@@ -65,11 +65,11 @@ describe('Business Registration - Complete Flow', () => {
         cy.get('body').then(($body) => {
             const bodyText = $body.text();
             if (bodyText.includes('We found your domain')) {
-                cy.log('✅ Domain available for purchase');
+                cy.log('Domain available for purchase');
                 businessRegPage.verifyDomainFound(domain);
                 businessRegPage.domainContinueButton().click();
             } else if (bodyText.includes('This domain is not available for registration')) {
-                cy.log('❌ Domain not available for purchase');
+                cy.log('Domain not available for purchase');
             }
         });
 

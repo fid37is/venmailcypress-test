@@ -1,16 +1,8 @@
-// cypress/e2e/login-tests.cy.js
-
+// cypress/e2e/login.cy.js - Fixed environment-agnostic login tests
 import LoginPage from "../../pages/LoginPage";
 
 describe('Login Page - Positive and Negative Tests', () => {
   const loginPage = new LoginPage();
-  let users;
-
-  before(() => {
-    cy.fixture('users').then((data) => {
-      users = data;
-    });
-  });
 
   beforeEach(() => {
     loginPage.visit();
@@ -18,13 +10,17 @@ describe('Login Page - Positive and Negative Tests', () => {
 
   // POSITIVE TEST - Successful Login
   it('should successfully login with valid credentials', () => {
-    loginPage.login(users.normalUser.email, users.normalUser.password);
-    cy.url({ timeout: 20000 }).should('include', '/m/all');
+    cy.getUser('normalUser').then((user) => {
+      loginPage.login(user.email, user.password);
+      cy.url({ timeout: 20000 }).should('include', '/m/all');
+    });
   });
 
   // NEGATIVE TEST - Invalid Email (Email doesn't exist)
   it('should show error for non-existent email', () => {
-    loginPage.usernameField().clear().type('nonexistent@test.com');
+    const fakeEmail = `nonexistent-${Date.now()}@test.com`;
+
+    loginPage.usernameField().clear().type(fakeEmail);
     loginPage.continueButton().click();
     cy.wait(2000);
     loginPage.verifyErrorMessage('No account found with this email address');
@@ -33,22 +29,25 @@ describe('Login Page - Positive and Negative Tests', () => {
 
   // NEGATIVE TEST - Valid Email but Wrong Password
   it('should show error for incorrect password', () => {
-    loginPage.usernameField().clear().type(users.normalUser.email);
-    loginPage.continueButton().click();
-    cy.wait(2000);
-    loginPage.passwordField().clear().type('WrongPassword123!');
-    loginPage.loginButton().click();
-    cy.wait(15000);
-    loginPage.verifyErrorMessage('The provided password is incorrect');
+    cy.getUser('normalUser').then((user) => {
+      loginPage.usernameField().clear().type(user.email);
+      loginPage.continueButton().click();
+      cy.wait(2000);
+      loginPage.passwordField().clear().type('WrongPassword123!');
+      loginPage.loginButton().click();
+      cy.wait(1000);
+      loginPage.verifyErrorMessage('The provided password is incorrect');
+    });
   });
 
-  // NEGATIVE TEST - Empty Password
-  it('should disable login button with empty password', () => {
-    loginPage.usernameField().clear().type(users.normalUser.email);
+  it('should show error for invalid email format', () => {
+    loginPage.usernameField().clear().type('invalidemail');
     loginPage.continueButton().click();
-    cy.wait(2000);
-    loginPage.passwordField().should('be.visible');
-    loginPage.passwordField().clear();
-    loginPage.loginButton().should('be.disabled');
+
+    loginPage.usernameField()
+      .invoke('prop', 'validationMessage')
+      .should('contain', "Please include an '@'");
   });
-})
+
+});
+

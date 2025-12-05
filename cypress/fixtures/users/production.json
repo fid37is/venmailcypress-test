@@ -1,0 +1,17 @@
+
+{
+  "existingAdminUser": {
+    "email": "prod-admin@venmail.io",
+    "password": "ProdSecurePass123!"
+  },
+  "existingSalesUser": {
+    "email": "outreach@venmail.io",
+    "password": "Ne54yHLS@VD5kr"
+  },
+  "normalUser": {
+    "email": "fidelis@venmail.io",
+    "password": "@cuteguy101%",
+    "firstName": "Fidelis",
+    "lastName": "Agba"
+  }
+}

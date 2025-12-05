@@ -1,0 +1,17 @@
+
+{
+  "existingAdminUser": {
+    "email": "mistarfid@gmail.com",
+    "password": "1234Phyl!"
+  },
+  "existingSalesUser": {
+    "email": "salestest@capitolhospitality.info",
+    "password": "1234Phyl!"
+  },
+  "normalUser": {
+    "email": "testorone@venia.me",
+    "password": "@cuteBillions012",
+    "firstName": "Testorone",
+    "lastName": "User"
+  }
+}
